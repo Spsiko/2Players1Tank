@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Week 6 Endless Runner</title>
+  <style>
+    body { margin: 0; background: #111; color: #fff; font-family: Arial, sans-serif; }
+    canvas { display: block; margin: 24px auto; border: 2px solid #333; background: #1e1e1e; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="900" height="450"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const STATES = {
+      MENU: 'menu',
+      PLAYING: 'playing',
+      GAMEOVER: 'gameover'
+    };
+     function resetGame() {
+      player = {
+        x: 120,
+        y: 320,
+        w: 36,
+        h: 36,
+        vy: 0,
+        onGround: true
+      };
+
+      obstacles = [];
+      score = 0;
+      obstacleTimer = 0;
+    }
+
+    let currentState = STATES.MENU;
+    function gameLoop() {
+      switch (currentState) {
+        case STATES.MENU:
+          drawMenu();
+          break;
+        case STATES.PLAYING:
+          updatePlaying();
+          drawPlaying();
+          break;
+        case STATES.GAMEOVER:
+          drawGameOver();
+          break;
+      }
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+    resetGame();
