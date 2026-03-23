@@ -1,7 +1,5 @@
-
-class Entity
+export class Entity
 {
-  
   constructor(x = 0, y = 0, vx = 0, vy = 0)
   {
     this.x = x;
@@ -10,12 +8,13 @@ class Entity
     this.vy = vy;
   }
 
-  update(dt) {
+  update(dt)
+  {
     throw new Error(`${this.constructor.name} must implement update()`);
   }
 
-  render(ctx) {
+  render(ctx) 
+  {
     throw new Error(`${this.constructor.name} must implement render()`);
   }
-
 }
