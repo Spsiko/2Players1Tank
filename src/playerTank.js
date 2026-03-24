@@ -10,14 +10,18 @@ export class Player extends Tank
     this.bulletColor  = 'yellow';
     this.bulletSpeed  = 400;
     this.health       = 1;
-    this.maxBounces   = 1;
+    this.maxBounces   = 2;
     this.fireRate     = 1.0;
     this.speed        = 150;
     this.rotationSpeed = 2;
+    this.prevX        = 0;
+    this.prevY        = 0;
   }
 
   update(dt, input)
   {
+    this.prevX = this.x;
+    this.prevY = this.y;
     super.update(dt);
 
     if (input.isHeld('ArrowUp') || input.isHeld('KeyW'))

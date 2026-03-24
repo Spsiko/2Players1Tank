@@ -7,6 +7,7 @@ export class Bullet extends Entity
     super(x, y, vx, vy);
     this.color = color;
     this.bounces = bounces;
+    this.bounceCount = 0;
     this.r = r;
     this.owner = owner;
     this.spawnImmunity = .05  //Seconds

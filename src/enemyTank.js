@@ -16,6 +16,8 @@ export class EnemyTank extends Tank
     this.fireRate      = data.fireRate;
     this.speed         = data.speed;
     this.rotationSpeed = data.rotationSpeed;
+    this.hitValue      = data.hitValue;
+    this.scoreValue    = data.scoreValue;
     this.ai            = ai;
   }
 
@@ -23,5 +25,17 @@ export class EnemyTank extends Tank
   {
     super.update(dt);
     this.ai.update(this, dt, context);
+  }
+
+    moveToward(targetX, targetY, dt)
+  {
+    const dx = targetX - (this.x + this.w / 2);
+    const dy = targetY - (this.y + this.h / 2);
+    const dist = Math.hypot(dx, dy) || 1;
+    
+    const angle = Math.atan2(dy, dx);
+    this.trackAngle = angle;
+    this.x += (dx / dist) * this.speed * dt;
+    this.y += (dy / dist) * this.speed * dt;
   }
 }

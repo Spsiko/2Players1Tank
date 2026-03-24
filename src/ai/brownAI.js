@@ -1,4 +1,4 @@
-export class StationaryAI
+export class BrownAI
 {
   update(tank, dt, context)
   {

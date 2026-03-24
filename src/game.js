@@ -1,19 +1,37 @@
 import { InputManager } from './input.js';
 import { Level } from './level.js';
-import { LEVEL_1 } from './levels/level1.js';
+import { LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5 } from './levels.js';
 import { Player } from './playerTank.js';
 import { overlapAABB, circleAABBNormal, circleAABB } from './collision/index.js'
 import { Bullet } from './bullet.js';
 import { eventBus } from './eventBus.js';
 import { EnemyTank } from './enemyTank.js';
-import { StationaryAI } from './ai/stationaryAI.js';
+import { BrownAI }      from './ai/brownAI.js';
+import { GrayAI }       from './ai/grayAI.js';
+import { TealAI }       from './ai/tealAI.js';
+import { BlackAI }      from './ai/blackAI.js';
+import { WhiteAI }      from './ai/whiteAI.js';
 
 const STATE = {
-  MENU:     'menu',
-  PLAYING:  'playing',
-  PAUSED:   'paused',
-  GAMEOVER: 'gameover',
+  MENU:         'menu',
+  LEVEL_SELECT: 'level_select',
+  PLAYING:      'playing',
+  PAUSED:       'paused',
+  GAMEOVER:     'gameover',
+  WIN:          'win',
 };
+
+const AI_MAP =
+{
+  brown:      BrownAI,
+  gray:       GrayAI,
+  teal:       TealAI,
+  black:      BlackAI,
+  white:      WhiteAI,
+};
+
+const BOUNCE_MULTIPLIER         = 1.1;
+const FRIENDLY_FIRE_MULTIPLIER  = 1.5;
 
 export class Game {
   constructor(canvasId)
@@ -22,12 +40,16 @@ export class Game {
     this.ctx = this.canvas.getContext('2d');
     this.state = STATE.MENU;
     this.lastTime = 0;
+    this.score = 0;
     this.particles = [];
     this.bullets = [];
     this.enemies = [];
     this.input = new InputManager(this.canvas);
-    this.level = new Level(LEVEL_1);  //TODO: have this be null by def and select in main menu
-    this.player = new Player(this.level.playerSpawn.x, this.level.playerSpawn.y);
+    this.levels = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5]; // import all
+    this.selectedLevel = 0;
+    this.level = null;
+    this.player = new Player();
+
   }
 
   start()
@@ -46,16 +68,20 @@ export class Game {
 
   setState(newState)
   {
-    console.log(`${this.state} -> ${newState}`);  
     
     if (newState === STATE.PLAYING)
     {
       this.resetGame();
     }
 
-    if (newState === STATE.GAMEOVER)
+    if (newState === STATE.WIN)
     {
-      // future: save score here
+      this.score = Math.max(0, this.score);
+    }
+
+    if (newState === STATE.LEVEL_SELECT)
+    {
+      this.selectedLevel = 0; // reset selection each time
     }
 
     this.state = newState;
@@ -63,43 +89,48 @@ export class Game {
 
   resetGame()
   {
-    this.bullets   = [];
-    this.particles = [];
-    this.enemies   = this.level.enemySpawns.map(spawn =>
-      new EnemyTank(spawn.x, spawn.y, spawn.type, new StationaryAI())
-    );
-    this.player = new Player(
-      this.level.playerSpawn.x,
-      this.level.playerSpawn.y
-    );
+    this.bullets    = [];
+    this.enemies    = [];
+    this.particles  = [];
+    this.score      = 0;
+    this.winDelay   = null; // null means win hasn't been triggered yet
+    this.player     = new Player(this.level.playerSpawn.x, this.level.playerSpawn.y);
+    this.enemies = this.level.enemySpawns.map(spawn => {
+      const AIClass = AI_MAP[spawn.type];
+      return new EnemyTank(spawn.x, spawn.y, spawn.type, new AIClass());
+    });
   }
 
   update(dt)
   {
     switch(this.state)
     {
-      case STATE.MENU:     this.updateMenu(dt);    break;
-      case STATE.PLAYING:  this.updatePlaying(dt); break;
-      case STATE.GAMEOVER: this.updateGameOver(dt);break;
+      case STATE.MENU:         this.updateMenu(dt);        break;
+      case STATE.LEVEL_SELECT: this.updateLevelSelect(dt); break;
+      case STATE.PLAYING:      this.updatePlaying(dt);     break;
+      case STATE.GAMEOVER:     this.updateGameOver(dt);    break;
+      case STATE.WIN:          this.updateWin(dt);         break;
     }
+    this.input.flush();
   }
 
   render()
   {
     switch(this.state)
     {
-      case STATE.MENU:     this.renderMenu();     break;
-      case STATE.PLAYING:  this.renderPlaying();  break;
-      case STATE.GAMEOVER: this.renderGameOver(); break;
+      case STATE.MENU:         this.renderMenu();        break;
+      case STATE.LEVEL_SELECT: this.renderLevelSelect(); break;
+      case STATE.PLAYING:      this.renderPlaying();     break;
+      case STATE.GAMEOVER:     this.renderGameOver();    break;
+      case STATE.WIN:          this.renderWin();         break;
     }
-    this.input.flush();
   }
 
   updateMenu(dt)
   {
     if (this.input.wasJustPressed('Space'))
     {
-      this.setState(STATE.PLAYING);
+      this.setState(STATE.LEVEL_SELECT);
     }
   }
 
@@ -118,15 +149,84 @@ export class Game {
     this.updateBullets(dt);
     this.resolveBulletTankCollision();
     this.resolveTankCollision();
-    const context =
-    {
-      player: this.player,
-      walls: this.level.getWalls(),
-      bullets: this.bullets,
-      enemies: this.enemies,
-    };
+    this.updateEnemies(dt);
+    this.checkWin(dt);
+  }
 
-    this.updateEnemies(dt, context);
+  updateLevelSelect(dt)
+  {
+    if (this.input.wasJustPressed('ArrowUp') || this.input.wasJustPressed('KeyW')) 
+    {
+      this.selectedLevel = Math.max(0, this.selectedLevel - 1);
+    }
+    if (this.input.wasJustPressed('ArrowDown') || this.input.wasJustPressed('KeyS')) 
+    {
+      this.selectedLevel = Math.min(this.levels.length - 1, this.selectedLevel + 1);
+    }
+    if (this.input.wasJustPressed('Space')) 
+    {
+      this.level = new Level(this.levels[this.selectedLevel]);
+      this.setState(STATE.PLAYING);
+    }
+  }
+
+  updateWin(dt)
+  {
+    if (this.input.wasJustPressed('Space'))
+    {
+      this.setState(STATE.LEVEL_SELECT);
+    }
+  }
+
+  renderLevelSelect()
+  {
+    this.ctx.fillStyle = '#111';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this.ctx.fillStyle = 'white';
+    this.ctx.textAlign = 'center';
+    this.ctx.font = 'bold 40px Arial';
+    this.ctx.fillText('SELECT LEVEL', this.canvas.width / 2, 100);
+
+    this.ctx.font = '28px Arial';
+    const startY = 180;
+    const spacing = 60;
+
+    for (let i = 0; i < this.levels.length; i++)
+    {
+      const y = startY + i * spacing;
+      const isSelected = i === this.selectedLevel;
+
+      this.ctx.fillStyle = isSelected ? '#ffd700' : 'white';
+      this.ctx.fillText(`Level ${i + 1}`, this.canvas.width / 2, y);
+
+      if (isSelected)
+      {
+        this.ctx.fillText('►', this.canvas.width / 2 - 120, y);
+      }
+    }
+
+    this.ctx.fillStyle = '#888';
+    this.ctx.font = '20px Arial';
+    this.ctx.fillText('W/S or Arrows to select, SPACE to play', this.canvas.width / 2, 460);
+  }
+
+  renderWin()
+  {
+    this.renderPlaying();
+
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this.ctx.fillStyle = '#ffd700';
+    this.ctx.textAlign = 'center';
+    this.ctx.font = 'bold 52px Arial';
+    this.ctx.fillText('LEVEL CLEAR', this.canvas.width / 2, 180);
+
+    this.ctx.fillStyle = 'white';
+    this.ctx.font = '28px Arial';
+    this.ctx.fillText(`Score: ${this.score}`, this.canvas.width / 2, 250);
+    this.ctx.fillText('Press SPACE to return to level select', this.canvas.width / 2, 350);
   }
 
   renderMenu() {
@@ -136,7 +236,7 @@ export class Game {
     this.ctx.fillStyle = 'white';
     this.ctx.textAlign = 'center';
     this.ctx.font = 'bold 48px Arial';
-    this.ctx.fillText('WII TANKS', this.canvas.width / 2, 180);
+    this.ctx.fillText('MI TANQUE', this.canvas.width / 2, 180);
 
     this.ctx.font = '24px Arial';
     this.ctx.fillText('Press SPACE to play', this.canvas.width / 2, 260);
@@ -186,6 +286,26 @@ export class Game {
     }
   }
 
+  checkWin(dt)
+  {
+    if (this.enemies.length > 0)
+    {
+      this.winDelay = null; // reset if enemies somehow respawn
+      return;
+    }
+
+    if (this.winDelay === null)
+    {
+      this.winDelay = 1.5; // seconds to wait
+    }
+
+    this.winDelay -= dt;
+    if (this.winDelay <= 0)
+    {
+      this.setState(STATE.WIN);
+    }
+  }
+
   updateBullets(dt)
   {
     for (let i = this.bullets.length - 1; i >= 0; i--)
@@ -202,8 +322,16 @@ export class Game {
     }
   }
 
-  updateEnemies(dt, context)
+  updateEnemies(dt)
   {
+    const context =
+    {
+      player: this.player,
+      walls: this.level.getWalls(),
+      bullets: this.bullets,
+      enemies: this.enemies,
+    };
+
     for (const enemy of this.enemies)
     {
       enemy.update(dt, context);
@@ -225,6 +353,7 @@ export class Game {
       b.vy -= 2 * dot * hit.ny;
 
       b.bounces--;
+      b.bounceCount++;
       if (b.bounces < 0)
       {
         this.bullets.splice(i, 1);
@@ -236,47 +365,62 @@ export class Game {
 
   resolveBulletTankCollision()
   {
-  for (let i = this.bullets.length - 1; i >= 0; i--)
-  {
-    const b = this.bullets[i];
-
-    // check player — all bullets can hit player
-    if (b.spawnImmunity <= 0 && circleAABB(b, this.player))
+    for (let i = this.bullets.length - 1; i >= 0; i--)
     {
-      this.bullets.splice(i, 1);
-      this.setState(STATE.GAMEOVER);
-      return;
-    }
+      const b = this.bullets[i];
 
-    // check enemies — skip the tank that fired it
-    for (let j = this.enemies.length - 1; j >= 0; j--)
-    {
-      const e = this.enemies[j];
-      if (b.owner === e) continue;
-      if (circleAABB(b, e))
+      // check player — all bullets can hit player
+      if (b.spawnImmunity <= 0 && circleAABB(b, this.player))
       {
-        e.health--;
         this.bullets.splice(i, 1);
-        if (e.health <= 0) this.enemies.splice(j, 1);
-        break;
+        this.setState(STATE.GAMEOVER);
+        return;
+      }
+
+      // check enemies — skip the tank that fired it
+      for (let j = this.enemies.length - 1; j >= 0; j--)
+      {
+        const e = this.enemies[j];
+        if (b.owner === e) continue;
+        if (circleAABB(b, e))
+        {
+          const bounceMultiplier = Math.pow(BOUNCE_MULTIPLIER, b.bounceCount);
+          const friendlyFireMultiplier = b.owner instanceof EnemyTank ? FRIENDLY_FIRE_MULTIPLIER : 1;
+
+          this.score += Math.floor(e.hitValue * bounceMultiplier * friendlyFireMultiplier);
+          
+          e.health--;
+          this.bullets.splice(i, 1);
+          if (e.health <= 0) 
+          {
+            this.score += Math.floor(e.scoreValue * bounceMultiplier * friendlyFireMultiplier);
+            this.enemies.splice(j, 1);
+          }
+          break;
+        }
       }
     }
   }
-}
 
-  resolveTankCollision()
-  {
-    for (const wall of this.level.getWalls())
+ resolveTankCollision()
+ {
+    this.resolveSingleTankCollision(this.player);
+    for (const enemy of this.enemies)
     {
-      const hit = overlapAABB(this.player, wall);
+      this.resolveSingleTankCollision(enemy);
+    }
+  }
+
+  resolveSingleTankCollision(tank)
+  {
+    for (const wall of this.level.getWalls()) 
+    {
+      const hit = overlapAABB(tank, wall);
       if (!hit) continue;
-      if (hit.overlapX < hit.overlapY)
-      {
-        this.player.x += this.player.x < wall.x ? -hit.overlapX : hit.overlapX;
-      }
-      else
-      {
-        this.player.y += this.player.y < wall.y ? -hit.overlapY : hit.overlapY;
+      if (hit.overlapX < hit.overlapY) {
+        tank.x += tank.x < wall.x ? -hit.overlapX : hit.overlapX;
+      } else {
+        tank.y += tank.y < wall.y ? -hit.overlapY : hit.overlapY;
       }
     }
   }
