@@ -1,34 +1,39 @@
 import { Tank } from './tank.js';
-import { eventBus } from './eventBus.js';
 
 export class Player extends Tank
 {
   constructor(x, y)
   {
     super(x, y);
+    this.color        = 'green';
+    this.gunColor     = 'darkgreen';
+    this.bulletColor  = 'yellow';
+    this.bulletSpeed  = 400;
+    this.health       = 1;
+    this.maxBounces   = 1;
+    this.fireRate     = 1.0;
+    this.speed        = 150;
+    this.rotationSpeed = 2;
   }
 
   update(dt, input)
   {
-    super.update(dt); //  I'm not so sure about this one chief
+    super.update(dt);
 
     if (input.isHeld('ArrowUp') || input.isHeld('KeyW'))
     {
       this.x += Math.cos(this.trackAngle) * this.speed * dt;
       this.y += Math.sin(this.trackAngle) * this.speed * dt;
     }
-
     if (input.isHeld('ArrowDown') || input.isHeld('KeyS'))
     {
       this.x -= Math.cos(this.trackAngle) * this.speed * dt;
       this.y -= Math.sin(this.trackAngle) * this.speed * dt;
     }
-
     if (input.isHeld('ArrowLeft') || input.isHeld('KeyA'))
     {
-      this.trackAngle -= this.rotationSpeed * dt;  
+      this.trackAngle -= this.rotationSpeed * dt;
     }
-
     if (input.isHeld('ArrowRight') || input.isHeld('KeyD'))
     {
       this.trackAngle += this.rotationSpeed * dt;
@@ -39,40 +44,9 @@ export class Player extends Tank
     const dy = input.mouse.y - (this.y + this.h / 2);
     this.gunAngle = Math.atan2(dy, dx) - this.trackAngle;
 
-    // firing
-    if (input.wasJustClicked(0) && this.fireCooldown <= 0)
+    if (input.wasJustClicked(0))
     {
-      this.fireCooldown = this.fireRate;
-      const angle = this.trackAngle + this.gunAngle;
-      const bulletSpeed = 400;  // TODO: move magic number
-      eventBus.push(
-      {
-        type: 'SPAWN_BULLET',
-        x: this.x + this.w / 2,
-        y: this.y + this.h / 2,
-        vx: Math.cos(angle) * bulletSpeed,
-        vy: Math.sin(angle) * bulletSpeed,
-        color: 'yellow',
-        bounces: this.maxBounces
-      });
+      this.fire();
     }
-  }
-
-  render(ctx)
-  {
-    ctx.save();
-    ctx.translate(this.x + this.w / 2, this.y + this.h / 2); // translate to center for rotation
-    ctx.rotate(this.trackAngle);
-
-    // body
-    ctx.fillStyle = 'green';
-    ctx.fillRect(-this.w / 2, -this.h / 2, this.w, this.h); 
-
-    // gun
-    ctx.rotate(this.gunAngle);
-    ctx.fillStyle = 'darkgreen';
-    ctx.fillRect(0, -4, .75*this.w, .33*this.h);  //TODO: Move Magic numbers
-
-    ctx.restore();
   }
 }
