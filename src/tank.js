@@ -32,10 +32,12 @@ export class Tank extends Entity
     if (this.fireCooldown > 0) return;
     this.fireCooldown = this.fireRate;
     const angle = this.trackAngle + this.gunAngle;
+    const barrelLength = this.w * 0.75;
     eventBus.push({
       type: 'SPAWN_BULLET',
-      x: this.x + this.w / 2,
-      y: this.y + this.h / 2,
+      owner: this,
+      x: this.x + this.w / 2 + Math.cos(angle) * barrelLength,
+      y: this.y + this.h / 2 + Math.sin(angle) * barrelLength,
       vx: Math.cos(angle) * this.bulletSpeed,
       vy: Math.sin(angle) * this.bulletSpeed,
       color: this.bulletColor,

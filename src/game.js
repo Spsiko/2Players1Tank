@@ -2,7 +2,7 @@ import { InputManager } from './input.js';
 import { Level } from './level.js';
 import { LEVEL_1 } from './levels/level1.js';
 import { Player } from './playerTank.js';
-import { overlapAABB, circleAABBNormal } from './collision/index.js'
+import { overlapAABB, circleAABBNormal, circleAABB } from './collision/index.js'
 import { Bullet } from './bullet.js';
 import { eventBus } from './eventBus.js';
 import { EnemyTank } from './enemyTank.js';
@@ -116,6 +116,7 @@ export class Game {
     this.player.update(dt, this.input);
     this.processEvents();
     this.updateBullets(dt);
+    this.resolveBulletTankCollision();
     this.resolveTankCollision();
     const context =
     {
@@ -175,7 +176,10 @@ export class Game {
       switch(event.type)
       {
         case 'SPAWN_BULLET':
-          this.bullets.push(new Bullet(event.x, event.y, event.vx, event.vy, event.color, event.bounces));
+          this.bullets.push(new Bullet(
+            event.x, event.y, event.vx, event.vy,
+            event.color, event.bounces, 6, event.owner
+          ));
           break;
         // future events go here
       }
@@ -189,6 +193,12 @@ export class Game {
       const b = this.bullets[i];
       b.update(dt);
       this.resolveBulletCollision(b, i);
+
+      if (b.x + b.r < 0 || b.x - b.r > this.canvas.width ||
+          b.y + b.r < 0 || b.y - b.r > this.canvas.height)
+      {
+        this.bullets.splice(i, 1);
+      }
     }
   }
 
@@ -218,10 +228,41 @@ export class Game {
       if (b.bounces < 0)
       {
         this.bullets.splice(i, 1);
+      }
+
+      break;
+    }
+  }
+
+  resolveBulletTankCollision()
+  {
+  for (let i = this.bullets.length - 1; i >= 0; i--)
+  {
+    const b = this.bullets[i];
+
+    // check player — all bullets can hit player
+    if (b.spawnImmunity <= 0 && circleAABB(b, this.player))
+    {
+      this.bullets.splice(i, 1);
+      this.setState(STATE.GAMEOVER);
+      return;
+    }
+
+    // check enemies — skip the tank that fired it
+    for (let j = this.enemies.length - 1; j >= 0; j--)
+    {
+      const e = this.enemies[j];
+      if (b.owner === e) continue;
+      if (circleAABB(b, e))
+      {
+        e.health--;
+        this.bullets.splice(i, 1);
+        if (e.health <= 0) this.enemies.splice(j, 1);
         break;
       }
     }
   }
+}
 
   resolveTankCollision()
   {
