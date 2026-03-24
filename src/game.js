@@ -2,7 +2,10 @@ import { InputManager } from './input.js';
 import { Level } from './level.js';
 import { LEVEL_1 } from './levels/level1.js';
 import { Player } from './playerTank.js';
-import { overlapAABB } from './collision/index.js'
+import { overlapAABB, circleAABBNormal } from './collision/index.js'
+import { Bullet } from './bullet.js';
+import { eventBus } from './eventBus.js';
+
 const STATE = {
   MENU:     'menu',
   PLAYING:  'playing',
@@ -44,21 +47,11 @@ export class Game {
 
   update(dt)
   {
-    if (this.state !== STATE.PLAYING) return; //TODO: split into dumber leaf functions
+    if (this.state !== STATE.PLAYING) return;
     this.player.update(dt, this.input);
-
-    for (const wall of this.level.getWalls())
-    {
-      const hit = overlapAABB(this.player, wall);
-      if (!hit) continue;
-
-      if (hit.overlapX < hit.overlapY) {
-        this.player.x += this.player.x < wall.x ? -hit.overlapX : hit.overlapX;
-      } else {
-        this.player.y += this.player.y < wall.y ? -hit.overlapY : hit.overlapY;
-      }
-    }
-
+    this.processEvents();
+    this.updateBullets(dt);
+    this.resolveTankCollision();
     this.input.flush();
   }
 
@@ -68,5 +61,71 @@ export class Game {
     if (this.state !== STATE.PLAYING) return;
     this.level.render(this.ctx);
     this.player.render(this.ctx);
+    for (const b of this.bullets) b.render(this.ctx);
   }
+
+  processEvents()
+  {
+    for (const event of eventBus.drain())
+    {
+      switch(event.type)
+      {
+        case 'SPAWN_BULLET':
+          this.bullets.push(new Bullet(event.x, event.y, event.vx, event.vy, event.color, event.bounces));
+          break;
+        // future events go here
+      }
+    }
+  }
+
+  updateBullets(dt)
+  {
+    for (let i = this.bullets.length - 1; i >= 0; i--)
+    {
+      const b = this.bullets[i];
+      b.update(dt);
+      this.resolveBulletCollision(b, i);
+    }
+  }
+
+  resolveBulletCollision(b, i)
+  {
+    for (const wall of this.level.getWalls())
+    {
+      const hit = circleAABBNormal(b, wall);
+      if (!hit) continue;
+
+      b.x += hit.nx * hit.depth;
+      b.y += hit.ny * hit.depth;
+
+      const dot = b.vx * hit.nx + b.vy * hit.ny;
+      b.vx -= 2 * dot * hit.nx;
+      b.vy -= 2 * dot * hit.ny;
+
+      b.bounces--;
+      if (b.bounces < 0)
+      {
+        this.bullets.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  resolveTankCollision()
+  {
+    for (const wall of this.level.getWalls())
+    {
+      const hit = overlapAABB(this.player, wall);
+      if (!hit) continue;
+      if (hit.overlapX < hit.overlapY)
+      {
+        this.player.x += this.player.x < wall.x ? -hit.overlapX : hit.overlapX;
+      }
+      else
+      {
+        this.player.y += this.player.y < wall.y ? -hit.overlapY : hit.overlapY;
+      }
+    }
+  }
+
 }

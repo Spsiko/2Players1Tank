@@ -1,4 +1,5 @@
 import { Tank } from './tank.js';
+import { eventBus } from './eventBus.js';
 
 export class Player extends Tank
 {
@@ -37,6 +38,24 @@ export class Player extends Tank
     const dx = input.mouse.x - (this.x + this.w / 2);
     const dy = input.mouse.y - (this.y + this.h / 2);
     this.gunAngle = Math.atan2(dy, dx) - this.trackAngle;
+
+    // firing
+    if (input.wasJustClicked(0) && this.fireCooldown <= 0)
+    {
+      this.fireCooldown = this.fireRate;
+      const angle = this.trackAngle + this.gunAngle;
+      const bulletSpeed = 400;  // TODO: move magic number
+      eventBus.push(
+      {
+        type: 'SPAWN_BULLET',
+        x: this.x + this.w / 2,
+        y: this.y + this.h / 2,
+        vx: Math.cos(angle) * bulletSpeed,
+        vy: Math.sin(angle) * bulletSpeed,
+        color: 'yellow',
+        bounces: this.maxBounces
+      });
+    }
   }
 
   render(ctx)
