@@ -20,17 +20,20 @@ export class Tank extends Entity
     this.fireRate     = undefined;
     this.speed        = undefined;
     this.rotationSpeed = undefined;
+    this.muzzleFlash = 0; //TODO: change/ad-hoc
   }
 
   update(dt)
   {
     if (this.fireCooldown > 0) this.fireCooldown -= dt;
+    if (this.muzzleFlash  > 0) this.muzzleFlash  -= dt;
   }
 
   fire()
   {
     if (this.fireCooldown > 0) return;
     this.fireCooldown = this.fireRate;
+    this.muzzleFlash   = 0.08; // seconds
     const angle = this.trackAngle + this.gunAngle;
     const barrelLength = this.w * 0.75;
     eventBus.push({
@@ -43,6 +46,7 @@ export class Tank extends Entity
       color: this.bulletColor,
       bounces: this.maxBounces
     });
+    eventBus.push({ type: 'PLAY_SOUND', sound: 'shoot' });
   }
 
   render(ctx)
@@ -57,6 +61,15 @@ export class Tank extends Entity
     ctx.rotate(this.gunAngle);
     ctx.fillStyle = this.gunColor;
     ctx.fillRect(0, -4, this.w * 0.75, this.h * 0.33);
+
+    if (this.muzzleFlash > 0)
+    {
+      const barrelLength = this.w * 0.75;
+      ctx.fillStyle = 'rgba(255, 255, 180, 0.9)';
+      ctx.beginPath();
+      ctx.arc(barrelLength, 0, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.restore();
   }

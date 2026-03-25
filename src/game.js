@@ -1,4 +1,6 @@
 import { InputManager } from './input.js';
+import { AudioManager } from './audio.js';
+import { emitExplosion, emitDust, updateParticles, renderParticles, emitScorePopup } from './particles.js';
 import { Level } from './level.js';
 import { LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5 } from './levels.js';
 import { Player } from './playerTank.js';
@@ -41,14 +43,22 @@ export class Game {
     this.state = STATE.MENU;
     this.lastTime = 0;
     this.score = 0;
+    this.displayScore = 0;
     this.particles = [];
     this.bullets = [];
     this.enemies = [];
+    this.shakeTime = 0;
+    this.shakeMagnitude = 0;
     this.input = new InputManager(this.canvas);
     this.levels = [LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4, LEVEL_5]; // import all
     this.selectedLevel = 0;
     this.level = null;
     this.player = new Player();
+    this.audio = new AudioManager();
+    this.audio.load('shoot',     'src/assets/audio/impactMetal_003.ogg');
+    this.audio.load('bounce',    'src/assets/audio/impactMetal_000.ogg');
+    this.audio.load('explosion', 'src/assets/audio/explosionCrunch_001.ogg');
+    this.audio.load('music',     'src/assets/audio/Scheme_inc.ogg'); // when ready
 
   }
 
@@ -68,20 +78,33 @@ export class Game {
 
   setState(newState)
   {
-    
-    if (newState === STATE.PLAYING)
+    switch(newState)
     {
-      this.resetGame();
-    }
+      case(STATE.PLAYING):
+      {
+        this.resetGame();
+        this.audio.playMusic('music');
+        break;
+      }
 
-    if (newState === STATE.WIN)
-    {
-      this.score = Math.max(0, this.score);
-    }
+      case(STATE.WIN):
+      {
+        this.score = Math.max(0, this.score);
+        this.audio.stopMusic('music');
+        break;
+      }
 
-    if (newState === STATE.LEVEL_SELECT)
-    {
-      this.selectedLevel = 0; // reset selection each time
+      case(STATE.GAMEOVER):
+      {
+        this.audio.stopMusic('music');
+        break;
+      }
+
+      case(STATE.LEVEL_SELECT):
+      {
+        this.selectedLevel = 0; // reset selection each time
+        break;
+      }
     }
 
     this.state = newState;
@@ -90,11 +113,13 @@ export class Game {
   resetGame()
   {
     this.bullets    = [];
-    this.enemies    = [];
     this.particles  = [];
     this.score      = 0;
+    this.displayScore = 0;
     this.winDelay   = null; // null means win hasn't been triggered yet
     this.player     = new Player(this.level.playerSpawn.x, this.level.playerSpawn.y);
+    this.shakeTime = 0;
+    this.shakeMagnitude = 0;
     this.enemies = this.level.enemySpawns.map(spawn => {
       const AIClass = AI_MAP[spawn.type];
       return new EnemyTank(spawn.x, spawn.y, spawn.type, new AIClass());
@@ -145,11 +170,27 @@ export class Game {
   updatePlaying(dt)
   {
     this.player.update(dt, this.input);
+
+    // if (this.player.isMoving) //TODO: Move this, when I actually have time
+    // {
+    //   emitDust(
+    //     this.particles,
+    //     this.player.x + this.player.w / 2,
+    //     this.player.y + this.player.h / 2,
+    //     this.player.trackAngle
+    //   );
+    // }
+    if (this.shakeTime > 0) this.shakeTime -= dt; //TODO: also move this, I should make an effects manager.
+    this.displayScore += (this.score - this.displayScore) * 5 * dt;
+    if (Math.abs(this.score - this.displayScore) < 0.3) {
+      this.displayScore = this.score;
+    }
     this.processEvents();
     this.updateBullets(dt);
     this.resolveBulletTankCollision();
     this.resolveTankCollision();
     this.updateEnemies(dt);
+    updateParticles(this.particles, dt);  //  Very ad-hoc
     this.checkWin(dt);
   }
 
@@ -185,29 +226,37 @@ export class Game {
 
     this.ctx.fillStyle = 'white';
     this.ctx.textAlign = 'center';
-    this.ctx.font = 'bold 40px Arial';
-    this.ctx.fillText('SELECT LEVEL', this.canvas.width / 2, 100);
+    this.ctx.font      = 'bold 40px Arial';
+    this.ctx.fillText('SELECT LEVEL', this.canvas.width / 2, 80);
 
-    this.ctx.font = '28px Arial';
-    const startY = 180;
-    const spacing = 60;
+    const labels = [
+      'Level 1 — Stationary enemies',
+      'Level 2 — Moving enemies introduced',
+      'Level 3 — Patrol enemies',
+      'Level 4 — Long range enemies',
+      'Level 5 — All enemy types',
+    ];
 
-    for (let i = 0; i < this.levels.length; i++)
-    {
-      const y = startY + i * spacing;
+    this.ctx.font    = '24px Arial';
+    const startY     = 160;
+    const spacing    = 55;
+
+    for (let i = 0; i < this.levels.length; i++) {
+      const y          = startY + i * spacing;
       const isSelected = i === this.selectedLevel;
 
       this.ctx.fillStyle = isSelected ? '#ffd700' : 'white';
-      this.ctx.fillText(`Level ${i + 1}`, this.canvas.width / 2, y);
+      this.ctx.fillText(labels[i], this.canvas.width / 2, y);
 
-      if (isSelected)
-      {
-        this.ctx.fillText('►', this.canvas.width / 2 - 120, y);
+      if (isSelected) {
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('►', this.canvas.width / 2 - 220, y);
+        this.ctx.textAlign = 'center';
       }
     }
 
     this.ctx.fillStyle = '#888';
-    this.ctx.font = '20px Arial';
+    this.ctx.font      = '20px Arial';
     this.ctx.fillText('W/S or Arrows to select, SPACE to play', this.canvas.width / 2, 460);
   }
 
@@ -229,17 +278,37 @@ export class Game {
     this.ctx.fillText('Press SPACE to return to level select', this.canvas.width / 2, 350);
   }
 
-  renderMenu() {
+  renderMenu()
+  {
     this.ctx.fillStyle = '#111';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    this.ctx.fillStyle = 'white';
-    this.ctx.textAlign = 'center';
-    this.ctx.font = 'bold 48px Arial';
-    this.ctx.fillText('MI TANQUE', this.canvas.width / 2, 180);
+    // title
+    this.ctx.fillStyle  = 'white';
+    this.ctx.textAlign  = 'center';
+    this.ctx.font       = 'bold 48px Arial';
+    this.ctx.fillText('MI TANQUE', this.canvas.width / 2, 120);
 
-    this.ctx.font = '24px Arial';
-    this.ctx.fillText('Press SPACE to play', this.canvas.width / 2, 260);
+    // objective
+    this.ctx.fillStyle  = '#ffd700';
+    this.ctx.font       = '22px Arial';
+    this.ctx.fillText('Destroy all enemy tanks to clear each level', this.canvas.width / 2, 180);
+
+    // controls
+    this.ctx.fillStyle  = 'white';
+    this.ctx.font       = '20px Arial';
+    this.ctx.fillText('Controls', this.canvas.width / 2, 240);
+
+    this.ctx.fillStyle  = '#aaa';
+    this.ctx.font       = '18px Arial';
+    this.ctx.fillText('WASD / Arrow Keys — Move tank', this.canvas.width / 2, 275);
+    this.ctx.fillText('Mouse — Aim turret', this.canvas.width / 2, 305);
+    this.ctx.fillText('Left Click — Shoot', this.canvas.width / 2, 335);
+
+    // prompt
+    this.ctx.fillStyle  = 'white';
+    this.ctx.font       = '22px Arial';
+    this.ctx.fillText('Press SPACE to select level', this.canvas.width / 2, 420);
   }
 
   renderGameOver() {
@@ -256,17 +325,30 @@ export class Game {
 
     this.ctx.fillStyle = 'white';
     this.ctx.font = '24px Arial';
-    this.ctx.fillText('Score: 0', this.canvas.width / 2, 260);  // TODO: real score
+    this.ctx.fillText(`Score: ${this.score}`, this.canvas.width / 2, 260); 
     this.ctx.fillText('Press SPACE to return to menu', this.canvas.width / 2, 300);
   }
 
   renderPlaying()
   {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  
+    const { dx, dy } = this.getShakeOffset();
+    this.ctx.save();
+    this.ctx.translate(dx, dy);
+
     this.level.render(this.ctx);
     this.player.render(this.ctx);
-    for (const b of this.bullets) b.render(this.ctx);
-    for (const e of this.enemies) e.render(this.ctx);
+    for (const e of this.enemies)  e.render(this.ctx);
+    for (const b of this.bullets)  b.render(this.ctx);
+    renderParticles(this.particles, this.ctx);
+
+    this.ctx.restore(); // restore before HUD so HUD doesn't shake
+
+    this.ctx.fillStyle = 'white';
+    this.ctx.textAlign = 'left';
+    this.ctx.font      = '20px Arial';
+    this.ctx.fillText(`Score: ${Math.floor(this.displayScore)}`, 30, 50);
   }
 
   processEvents()
@@ -281,7 +363,40 @@ export class Game {
             event.color, event.bounces, 6, event.owner
           ));
           break;
-        // future events go here
+
+        case 'TANK_HIT':
+          event.tank.health--;
+          // score on hit
+          const bounceMultiplier = Math.pow(BOUNCE_MULTIPLIER, event.bullet.bounceCount);
+          const friendlyFireMultiplier = event.bullet.owner instanceof EnemyTank ? FRIENDLY_FIRE_MULTIPLIER : 1;
+          const hitScore = Math.floor(event.tank.hitValue * bounceMultiplier * friendlyFireMultiplier);
+          this.score += hitScore;
+          emitScorePopup(this.particles, event.x, event.y, hitScore);
+          break;
+
+        case 'TANK_KILLED':
+          this.audio.play('explosion', 0.6);
+          emitExplosion(this.particles, event.x, event.y, event.tank.color);
+          if (event.tank === this.player)
+          {
+            this.setState(STATE.GAMEOVER);
+          }
+          else
+          {
+            this.triggerShake(0.3, event.tank === this.player ? 12 : 8);  //TODO: move before player check after fixing bug
+            const bm = Math.pow(BOUNCE_MULTIPLIER, event.bullet.bounceCount);
+            const ffm = event.bullet.owner instanceof EnemyTank ? FRIENDLY_FIRE_MULTIPLIER : 1;
+            const killScore = Math.floor(event.tank.scoreValue * bm * ffm);
+            this.score += killScore;
+            emitScorePopup(this.particles, event.x, event.y - 20, killScore);
+            this.enemies = this.enemies.filter(e => e !== event.tank);
+          }
+          break;
+        
+          case 'PLAY_SOUND':
+            this.audio.play(event.sound);
+            break;
+        
       }
     }
   }
@@ -354,6 +469,7 @@ export class Game {
 
       b.bounces--;
       b.bounceCount++;
+      eventBus.push({ type: 'PLAY_SOUND', sound: 'bounce' });
       if (b.bounces < 0)
       {
         this.bullets.splice(i, 1);
@@ -372,8 +488,9 @@ export class Game {
       // check player — all bullets can hit player
       if (b.spawnImmunity <= 0 && circleAABB(b, this.player))
       {
+        eventBus.push({ type: 'TANK_KILLED', tank: this.player, bullet: b, 
+                        x: this.player.x + this.player.w / 2, y: this.player.y + this.player.h / 2 });
         this.bullets.splice(i, 1);
-        this.setState(STATE.GAMEOVER);
         return;
       }
 
@@ -384,18 +501,19 @@ export class Game {
         if (b.owner === e) continue;
         if (circleAABB(b, e))
         {
-          const bounceMultiplier = Math.pow(BOUNCE_MULTIPLIER, b.bounceCount);
-          const friendlyFireMultiplier = b.owner instanceof EnemyTank ? FRIENDLY_FIRE_MULTIPLIER : 1;
+          // const bounceMultiplier = Math.pow(BOUNCE_MULTIPLIER, b.bounceCount);
+          // const friendlyFireMultiplier = b.owner instanceof EnemyTank ? FRIENDLY_FIRE_MULTIPLIER : 1;
 
-          this.score += Math.floor(e.hitValue * bounceMultiplier * friendlyFireMultiplier);
-          
-          e.health--;
-          this.bullets.splice(i, 1);
-          if (e.health <= 0) 
+          // this.score += Math.floor(e.hitValue * bounceMultiplier * friendlyFireMultiplier);
+
+          const cx = e.x + e.w / 2;
+          const cy = e.y + e.h / 2;
+          eventBus.push({ type: 'TANK_HIT', tank: e, bullet: b, x: cx, y: cy });
+          if (e.health - 1 <= 0) 
           {
-            this.score += Math.floor(e.scoreValue * bounceMultiplier * friendlyFireMultiplier);
-            this.enemies.splice(j, 1);
+            eventBus.push({ type: 'TANK_KILLED', tank: e, bullet: b, x: cx, y: cy });
           }
+          this.bullets.splice(i, 1);
           break;
         }
       }
@@ -423,6 +541,21 @@ export class Game {
         tank.y += tank.y < wall.y ? -hit.overlapY : hit.overlapY;
       }
     }
+  }
+
+  triggerShake(duration, magnitude = 8)
+  {
+    this.shakeTime      = Math.max(this.shakeTime, duration);
+    this.shakeMagnitude = Math.max(this.shakeMagnitude, magnitude);
+  }
+
+  getShakeOffset()
+  {
+    if (this.shakeTime <= 0) return { dx: 0, dy: 0 };
+    return {
+      dx: (Math.random() - 0.5) * this.shakeMagnitude,
+      dy: (Math.random() - 0.5) * this.shakeMagnitude,
+    };
   }
 
 }

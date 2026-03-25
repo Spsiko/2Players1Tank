@@ -16,6 +16,7 @@ export class Player extends Tank
     this.rotationSpeed = 2;
     this.prevX        = 0;
     this.prevY        = 0;
+    this.isMoving     = false;
   }
 
   update(dt, input)
@@ -42,6 +43,9 @@ export class Player extends Tank
     {
       this.trackAngle += this.rotationSpeed * dt;
     }
+
+    // this.isMoving = input.isHeld('ArrowUp') || input.isHeld('KeyW') ||
+    //             input.isHeld('ArrowDown') || input.isHeld('KeyS');
 
     // turret aims at mouse
     const dx = input.mouse.x - (this.x + this.w / 2);
