@@ -34,10 +34,10 @@ Beyond the cooperative-to-solo pivot, several things changed during development.
 
 | Asset | Creator | Source | License |
 |---|---|---|---|
-| explosionCrunch_001.ogg | Kenney | kenney.nl | CC0 |
-| impactMetal_000.ogg | Kenney | kenney.nl | CC0 |
-| impactMetal_003.ogg | Kenney | kenney.nl | CC0 |
-| Scheme_inc.ogg | ゆうり (Yuli Audio Craft) | DOVA-SYNDROME (dova-s.jp) | DOVA-SYNDROME Sound License — free for use in games, no attribution required |
+| explosionCrunch_001.ogg | Kenney | https://kenney.nl/assets/impact-sounds | CC0 |
+| impactMetal_000.ogg | Kenney | https://kenney.nl/assets/impact-sounds | CC0 |
+| impactMetal_003.ogg | Kenney | https://kenney.nl/assets/impact-sounds | CC0 |
+| Scheme_inc.ogg | ゆうり (Yuli Audio Craft) | https://dova-s.jp | DOVA-SYNDROME Sound License — free for use in games, no attribution required |
 
 ## AI Assistance
 
